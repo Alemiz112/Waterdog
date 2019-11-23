@@ -10,6 +10,10 @@ pipeline {
     stages {
         stage ('Build') {
             steps {
+                sh 'git config --global user.email "alex@mizerak.eu" \
+                    && git config --global user.name "Alemiz112"'
+                sh 'git submodule update --init && ./scripts/applyPatches.sh'
+                
                 sh 'mvn clean package'
             }
             post {
