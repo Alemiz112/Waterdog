@@ -12,7 +12,7 @@ pipeline {
             steps {
                 sh 'git config --global user.email "alex@mizerak.eu" \
                     && git config --global user.name "Alemiz112"'
-                sh "git submodule update --init && ./scripts/jenkinsBuild.sh ${BUILD_ID}"
+                sh "chmod +x ./scripts/jenkinsBuild.sh && ./scripts/jenkinsBuild.sh ${BUILD_ID}"
                 
                 sh 'mvn clean package'
             }
