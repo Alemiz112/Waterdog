@@ -1,4 +1,4 @@
-From 3ab78bd18e2d615359fb91189426e50606b8076c Mon Sep 17 00:00:00 2001
+From ee7b897c22b543f03ee8964b7e82e14a74d72907 Mon Sep 17 00:00:00 2001
 From: Colin Godsey <crgodsey@gmail.com>
 Date: Tue, 16 Apr 2019 07:50:25 -0600
 Subject: [PATCH] Waterdog PE (modifications)
@@ -1957,7 +1957,7 @@ index af27f65c..6b4b0739 100644
          if (net.md_5.bungee.api.ProxyServer.getInstance().getConfig().isDisableEntityMetadataRewrite()) {
              return EntityMap_Dummy.INSTANCE;
 diff --git a/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java b/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java
-index 4882b8ed..3cf45753 100644
+index 4882b8ed..e72861d7 100644
 --- a/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java
 +++ b/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java
 @@ -54,6 +54,11 @@ public class ChannelWrapper
@@ -1972,6 +1972,39 @@ index 4882b8ed..3cf45753 100644
                  ch.writeAndFlush( ( (PacketWrapper) packet ).buf, ch.voidPromise() );
              } else
              {
+@@ -80,7 +85,7 @@ public class ChannelWrapper
+ 
+             if ( packet != null && ch.isActive() )
+             {
+-                ch.writeAndFlush( packet ).addListeners( ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE, ChannelFutureListener.CLOSE );
++                ch.writeAndFlush( packet , ch.voidPromise()).addListeners( ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE, ChannelFutureListener.CLOSE );
+                 ch.eventLoop().schedule( new Runnable()
+                 {
+                     @Override
+@@ -88,7 +93,7 @@ public class ChannelWrapper
+                     {
+                         ch.close();
+                     }
+-                }, 250, TimeUnit.MILLISECONDS );
++                }, 1000, TimeUnit.MILLISECONDS );
+             } else
+             {
+                 ch.flush();
+@@ -106,12 +111,10 @@ public class ChannelWrapper
+             // Minecraft client can take some time to switch protocols.
+             // Sending the wrong disconnect packet whilst a protocol switch is in progress will crash it.
+             // Delay 250ms to ensure that the protocol switch (if any) has definitely taken place.
+-            ch.eventLoop().schedule( new Runnable()
+-            {
++            ch.eventLoop().schedule( new Runnable() {
+ 
+                 @Override
+-                public void run()
+-                {
++                public void run() {
+                     close( kick );
+                 }
+             }, 250, TimeUnit.MILLISECONDS );
 diff --git a/proxy/src/main/java/net/md_5/bungee/netty/HandlerBoss.java b/proxy/src/main/java/net/md_5/bungee/netty/HandlerBoss.java
 index a66099fc..7287197c 100644
 --- a/proxy/src/main/java/net/md_5/bungee/netty/HandlerBoss.java
