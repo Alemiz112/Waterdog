@@ -1,11 +1,11 @@
-From c58bba401428451a2614bc93290ae96fecd0faef Mon Sep 17 00:00:00 2001
+From 47133342f5c2493b3c7f00fdf718fcc797b6267c Mon Sep 17 00:00:00 2001
 From: Colin Godsey <crgodsey@gmail.com>
 Date: Tue, 16 Apr 2019 07:50:25 -0600
 Subject: [PATCH] Waterdog PE (modifications)
 
 
 diff --git a/api/src/main/java/net/md_5/bungee/api/ProxyServer.java b/api/src/main/java/net/md_5/bungee/api/ProxyServer.java
-index a4011335..94e18aa8 100644
+index a4011335..9ad3672a 100644
 --- a/api/src/main/java/net/md_5/bungee/api/ProxyServer.java
 +++ b/api/src/main/java/net/md_5/bungee/api/ProxyServer.java
 @@ -221,19 +221,13 @@ public abstract class ProxyServer
@@ -15,7 +15,7 @@ index a4011335..94e18aa8 100644
 -    public abstract ServerInfo constructServerInfo(String name, InetSocketAddress address, String motd, boolean restricted);
 +    // Waterdog start
 +    public abstract ServerInfo constructServerInfo(String name, SocketAddress address, String motd, boolean restricted, boolean isRakNet, String transferGroup);
-
+ 
 -    /**
 -     * Factory method to construct an implementation specific server info
 -     * instance.
@@ -34,6 +34,26 @@ index a4011335..94e18aa8 100644
  
      /**
       * Returns the console overlord for this proxy. Being the console, this
+@@ -327,4 +321,19 @@ public abstract class ProxyServer
+      */
+     public abstract Title createTitle();
+ 
++    /**
++     * Creates new realId for client
++     *
++     * @param entityId
++     * @return
++     */
++    public abstract Integer createConnectionId(Integer entityId);
++    /**
++     * Removes realId from map after client logout
++     *
++     * @param realId
++     * @return
++     */
++    public abstract void removeConnectionId(Integer realId);
++
+ }
 diff --git a/api/src/main/java/net/md_5/bungee/api/config/ListenerInfo.java b/api/src/main/java/net/md_5/bungee/api/config/ListenerInfo.java
 index 71abdc87..4584c09e 100644
 --- a/api/src/main/java/net/md_5/bungee/api/config/ListenerInfo.java
@@ -1019,6 +1039,18 @@ index 6ef76ea2..5dee53dd 100644
      }
  
      protected void rewriteV8ChunkSection(ByteBuf in, ByteBuf out) {
+diff --git a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java b/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java
+index 553713ff..c89ccb7c 100644
+--- a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java
++++ b/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java
+@@ -168,6 +168,7 @@ public class PELogin extends Login {
+ 
+     @Override
+     public void write(ByteBuf buf, ProtocolConstants.Direction direction, int protocolVersion) {
++        System.out.println("Login Write EID: "+getEntityId());
+         writeSVarLong(getEntityId(), buf);
+         writeVarLong(getEntityId(), buf);
+         writeSVarInt(getGameMode(), buf);
 diff --git a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PEStopSoundPacket.java b/protocol/src/main/java/network/ycc/waterdog/pe/packet/PEStopSoundPacket.java
 index dab227a1..12b52465 100644
 --- a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PEStopSoundPacket.java
@@ -1034,10 +1066,21 @@ index dab227a1..12b52465 100644
  
      @Override
 diff --git a/proxy/src/main/java/net/md_5/bungee/BungeeCord.java b/proxy/src/main/java/net/md_5/bungee/BungeeCord.java
-index a62f6698..48b28a16 100644
+index a62f6698..aec5b02a 100644
 --- a/proxy/src/main/java/net/md_5/bungee/BungeeCord.java
 +++ b/proxy/src/main/java/net/md_5/bungee/BungeeCord.java
-@@ -240,6 +240,7 @@ public class BungeeCord extends ProxyServer
+@@ -130,6 +130,10 @@ public class BungeeCord extends ProxyServer
+     private final Map<UUID, UserConnection> connectionsByOfflineUUID = new HashMap<>();
+     private final Map<UUID, UserConnection> connectionsByUUID = new HashMap<>();
+     private final ReadWriteLock connectionLock = new ReentrantReadWriteLock();
++    /**
++     * Connection id pointing to first server id
++     */
++    private final Map<Integer, Integer> connectionsId = new HashMap<>();
+     /**
+      * Plugin manager.
+      */
+@@ -240,6 +244,7 @@ public class BungeeCord extends ProxyServer
                  logger.info( "Using standard Java compressor." );
              }
          }
@@ -1045,7 +1088,7 @@ index a62f6698..48b28a16 100644
      }
  
      /**
-@@ -331,6 +332,7 @@ public class BungeeCord extends ProxyServer
+@@ -331,6 +336,7 @@ public class BungeeCord extends ProxyServer
                      }
                  }
              };
@@ -1053,7 +1096,7 @@ index a62f6698..48b28a16 100644
              new ServerBootstrap()
                      .channel( PipelineUtils.getServerChannel( info.getSocketAddress() ) )
                      .option( ChannelOption.SO_REUSEADDR, true ) // TODO: Move this elsewhere!
-@@ -339,8 +341,23 @@ public class BungeeCord extends ProxyServer
+@@ -339,8 +345,23 @@ public class BungeeCord extends ProxyServer
                      .group( bossEventLoopGroup, workerEventLoopGroup )
                      .localAddress( info.getSocketAddress() )
                      .bind().addListener( listener );
@@ -1077,8 +1120,36 @@ index a62f6698..48b28a16 100644
 +            if ( info.needsRealQuery() ) // Waterdog
              {
                  Preconditions.checkArgument( info.getSocketAddress() instanceof InetSocketAddress, "Can only create query listener on UDP address" );
-
-@@ -638,7 +655,7 @@ public class BungeeCord extends ProxyServer
+ 
+@@ -595,6 +616,27 @@ public class BungeeCord extends ProxyServer
+         }
+     }
+ 
++    public Integer createConnectionId(Integer entityId){
++        Integer realId = ((connectionsId.size() == 0) ? 1000 : 1000 + connectionsId.size());
++        if (connectionsId.containsKey(realId)){
++            Integer lastkey = 1000;
++            for (Integer key : connectionsId.keySet()){
++                if (key - lastkey > 1){
++                    realId = key - 1;
++                }
++                lastkey = key;
++            }
++        }
++
++        connectionsId.put(realId, entityId);
++        return realId;
++    }
++
++    @Override
++    public void removeConnectionId(Integer realId) {
++        connectionsId.remove(realId);
++    }
++
+     @Override
+     public Map<String, ServerInfo> getServers()
+     {
+@@ -638,7 +680,7 @@ public class BungeeCord extends ProxyServer
  
      public PluginMessage registerChannels(int protocolVersion)
      {
@@ -1087,7 +1158,7 @@ index a62f6698..48b28a16 100644
          {
              return new PluginMessage( "minecraft:register", Util.format( Iterables.transform( pluginChannels, PluginMessage.MODERNISE ), "\00" ).getBytes( Charsets.UTF_8 ), false );
          }
-@@ -658,16 +675,18 @@ public class BungeeCord extends ProxyServer
+@@ -658,16 +700,18 @@ public class BungeeCord extends ProxyServer
          return getConfig().getGameVersion(); // Waterfall
      }
  
@@ -1100,7 +1171,7 @@ index a62f6698..48b28a16 100644
 +        return constructServerInfo( name, address, motd, restricted );
      }
 +    // Waterdog end
-
+ 
      @Override
 -    public ServerInfo constructServerInfo(String name, SocketAddress address, String motd, boolean restricted)
 +    public ServerInfo constructServerInfo(String name, SocketAddress address, String motd, boolean restricted, boolean isRakNet, String transferGroup) // Waterdog
@@ -1110,6 +1181,14 @@ index a62f6698..48b28a16 100644
      }
  
      @Override
+@@ -721,6 +765,7 @@ public class BungeeCord extends ProxyServer
+                 connections.remove( con.getName() );
+                 connectionsByUUID.remove( con.getUniqueId() );
+                 connectionsByOfflineUUID.remove( con.getPendingConnection().getOfflineId() );
++                connectionsId.remove(con.getClientEntityId());
+             }
+         } finally
+         {
 diff --git a/proxy/src/main/java/net/md_5/bungee/BungeeCordLauncher.java b/proxy/src/main/java/net/md_5/bungee/BungeeCordLauncher.java
 index d9497970..3eda0a37 100644
 --- a/proxy/src/main/java/net/md_5/bungee/BungeeCordLauncher.java
@@ -1166,7 +1245,7 @@ index fa4fff0e..f18f2202 100644
      public void addPlayer(ProxiedPlayer player)
      {
 diff --git a/proxy/src/main/java/net/md_5/bungee/ServerConnector.java b/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
-index 139c4f09..51ee3a8b 100644
+index 139c4f09..cfd73f91 100644
 --- a/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
 +++ b/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
 @@ -53,6 +53,7 @@ import net.md_5.bungee.protocol.packet.SetCompression;
@@ -1271,7 +1350,17 @@ index 139c4f09..51ee3a8b 100644
      @Override
      public void handle(Login login) throws Exception
      {
-@@ -247,6 +302,31 @@ public class ServerConnector extends PacketHandler
+@@ -242,11 +297,41 @@ public class ServerConnector extends PacketHandler
+             // Once again, first connection
+             user.setClientEntityId( login.getEntityId() );
+             user.setServerEntityId( login.getEntityId() );
++            if (login instanceof network.ycc.waterdog.pe.packet.PELogin){
++                final network.ycc.waterdog.pe.packet.PELogin peLogin = (network.ycc.waterdog.pe.packet.PELogin) login;
++                Integer realId = ProxyServer.getInstance().createConnectionId(peLogin.getEntityId());
++                if (realId != null) user.setClientEntityId( realId );
++            }
+ 
+             // Set tab list size, TODO: what shall we do about packet mutability
              Login modLogin = new Login( login.getEntityId(), login.getGameMode(), (byte) login.getDimension(), login.getSeed(), login.getDifficulty(),
                      (byte) user.getPendingConnection().getListener().getTabListSize(), login.getLevelType(), login.getViewDistance(), login.isReducedDebugInfo(), login.isNormalRespawn() );
  
@@ -1281,7 +1370,7 @@ index 139c4f09..51ee3a8b 100644
 +
 +                // TODO: version support check
 +
-+                modLogin = new network.ycc.waterdog.pe.packet.PELogin( login.getEntityId(),
++                modLogin = new network.ycc.waterdog.pe.packet.PELogin( user.getClientEntityId(),
 +                        login.getGameMode(), (byte) login.getDimension(), login.getDifficulty(),
 +                        (byte) user.getPendingConnection().getListener().getTabListSize(), login.getLevelType(),
 +                        login.getViewDistance(), login.isReducedDebugInfo(), peLogin.getTailPayload() );
@@ -1303,7 +1392,7 @@ index 139c4f09..51ee3a8b 100644
              user.unsafe().sendPacket( modLogin );
  
              ByteBuf brand = ByteBufAllocator.DEFAULT.heapBuffer();
-@@ -261,6 +341,13 @@ public class ServerConnector extends PacketHandler
+@@ -261,6 +346,13 @@ public class ServerConnector extends PacketHandler
              user.getTabListHandler().onServerChange();
  
              Scoreboard serverScoreboard = user.getServerSentScoreboard();
@@ -1317,7 +1406,7 @@ index 139c4f09..51ee3a8b 100644
              if ( !user.isDisableEntityMetadataRewrite() ) { // Waterfall
              for ( Objective objective : serverScoreboard.getObjectives() )
              {
-@@ -322,6 +409,39 @@ public class ServerConnector extends PacketHandler
+@@ -322,6 +414,39 @@ public class ServerConnector extends PacketHandler
              }
              user.setDimension( login.getDimension() );
  
@@ -1329,7 +1418,7 @@ index 139c4f09..51ee3a8b 100644
 +                        (int) peLogin.getSpawnX(), (int) peLogin.getSpawnY(), (int) peLogin.getSpawnZ());
 +                network.ycc.waterdog.pe.PERawPacketData.injectGameMode(user.getCh().getHandle(), login.getGameMode());
 +
-+                server.unsafe().sendPacket(new network.ycc.waterdog.pe.packet.PELocalPlayerInitialized(login.getEntityId()));
++                server.unsafe().sendPacket(new network.ycc.waterdog.pe.packet.PELocalPlayerInitialized(user.getClientEntityId()));
 +
 +                ByteBuf paletteData = io.netty.buffer.Unpooled.wrappedBuffer(peLogin.getTailPayload())
 +                        .skipBytes(peLogin.getPayloadPaletteOffset())
@@ -1904,7 +1993,7 @@ index 4d8bac5d..e0a7e785 100644
 @@ -127,6 +144,17 @@ public class UpstreamBridge extends PacketHandler
      {
          KeepAliveData keepAliveData = con.getServer().getKeepAlives().poll();
-
+ 
 +        // Waterdog start
 +        if (ProtocolConstants.isPE(con.getPendingConnection().getVersion())) {
 +            int newPing = (int) (alive.getRandomId() / 1000000);
