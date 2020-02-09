@@ -1,33 +1,64 @@
-From c51e36bad6f8c843736d712c5d3d374a143d515d Mon Sep 17 00:00:00 2001
+From 0007abff5b1e9a825404a066e675e4a121a07f27 Mon Sep 17 00:00:00 2001
 From: Colin Godsey <crgodsey@gmail.com>
 Date: Tue, 16 Apr 2019 07:50:25 -0600
 Subject: [PATCH] Waterdog PE (modifications)
 
 
 diff --git a/api/src/main/java/net/md_5/bungee/api/ProxyServer.java b/api/src/main/java/net/md_5/bungee/api/ProxyServer.java
-index d44ac67e..4025bae0 100644
+index a4011335..9ad3672a 100644
 --- a/api/src/main/java/net/md_5/bungee/api/ProxyServer.java
 +++ b/api/src/main/java/net/md_5/bungee/api/ProxyServer.java
-@@ -221,7 +221,13 @@ public abstract class ProxyServer
+@@ -221,19 +221,13 @@ public abstract class ProxyServer
       * @param restricted whether the server info restricted property will be set
       * @return the constructed instance
       */
 -    public abstract ServerInfo constructServerInfo(String name, InetSocketAddress address, String motd, boolean restricted);
 +    // Waterdog start
-+    public abstract ServerInfo constructServerInfo(String name, InetSocketAddress address, String motd, boolean restricted, boolean isRakNet, String transferGroup);
-+
-+    public ServerInfo constructServerInfo(String name, InetSocketAddress address, String motd, boolean restricted) {
++    public abstract ServerInfo constructServerInfo(String name, SocketAddress address, String motd, boolean restricted, boolean isRakNet, String transferGroup);
+ 
+-    /**
+-     * Factory method to construct an implementation specific server info
+-     * instance.
+-     *
+-     * @param name name of the server
+-     * @param address connectable Minecraft address + port of the server
+-     * @param motd the motd when used as a forced server
+-     * @param restricted whether the server info restricted property will be set
+-     * @return the constructed instance
+-     */
+-    public abstract ServerInfo constructServerInfo(String name, SocketAddress address, String motd, boolean restricted);
++    public ServerInfo constructServerInfo(String name, SocketAddress address, String motd, boolean restricted) {
 +        return constructServerInfo(name, address, motd, restricted, false, "default");
 +    }
 +    // Waterdog end
  
      /**
       * Returns the console overlord for this proxy. Being the console, this
+@@ -327,4 +321,19 @@ public abstract class ProxyServer
+      */
+     public abstract Title createTitle();
+
++    /**
++     * Creates new realId for client
++     *
++     * @param entityId
++     * @return
++     */
++    public abstract Integer createConnectionId(Integer entityId);
++    /**
++     * Removes realId from map after client logout
++     *
++     * @param realId
++     * @return
++     */
++    public abstract void removeConnectionId(Integer realId);
++
+ }
 diff --git a/api/src/main/java/net/md_5/bungee/api/config/ListenerInfo.java b/api/src/main/java/net/md_5/bungee/api/config/ListenerInfo.java
-index 42b84063..3374ae40 100644
+index 71abdc87..4584c09e 100644
 --- a/api/src/main/java/net/md_5/bungee/api/config/ListenerInfo.java
 +++ b/api/src/main/java/net/md_5/bungee/api/config/ListenerInfo.java
-@@ -71,13 +71,26 @@ public class ListenerInfo
+@@ -72,13 +72,26 @@ public class ListenerInfo
       * Whether to support HAProxy PROXY protocol.
       */
      private final boolean proxyProtocol;
@@ -55,22 +86,22 @@ index 42b84063..3374ae40 100644
      /**
       * Gets the highest priority server to join.
       *
-@@ -102,4 +115,10 @@ public class ListenerInfo
+@@ -115,4 +128,10 @@ public class ListenerInfo
      {
-         return ( serverPriority.size() > 1 ) ? serverPriority.get( 1 ) : getDefaultServer();
+         return (InetSocketAddress) socketAddress;
      }
 +
 +    // Waterdog start
 +    public boolean needsRealQuery() {
-+        return queryEnabled && (!rakNet || queryPort != host.getPort());
++        return queryEnabled && (!rakNet || queryPort != ((InetSocketAddress) socketAddress).getPort());
 +    }
 +    // Waterdog end
  }
 diff --git a/api/src/main/java/net/md_5/bungee/api/config/ServerInfo.java b/api/src/main/java/net/md_5/bungee/api/config/ServerInfo.java
-index 19773843..30e41bd7 100644
+index b0fc000a..f897f9e1 100644
 --- a/api/src/main/java/net/md_5/bungee/api/config/ServerInfo.java
 +++ b/api/src/main/java/net/md_5/bungee/api/config/ServerInfo.java
-@@ -104,4 +104,11 @@ public interface ServerInfo
+@@ -115,4 +115,11 @@ public interface ServerInfo
       * @param callback the callback to call when the count has been retrieved.
       */
      void ping(Callback<ServerPing> callback);
@@ -103,10 +134,10 @@ index f7459860..4f13a7a3 100644
       * Gets this player's locale.
       *
 diff --git a/api/src/test/java/net/md_5/bungee/api/ServerConnectRequestTest.java b/api/src/test/java/net/md_5/bungee/api/ServerConnectRequestTest.java
-index 0d1f801a..831505f0 100644
+index 3bae8064..e5f556a2 100644
 --- a/api/src/test/java/net/md_5/bungee/api/ServerConnectRequestTest.java
 +++ b/api/src/test/java/net/md_5/bungee/api/ServerConnectRequestTest.java
-@@ -70,6 +70,12 @@ public class ServerConnectRequestTest
+@@ -77,6 +77,12 @@ public class ServerConnectRequestTest
          public void ping(Callback<ServerPing> callback)
          {
          }
@@ -167,7 +198,7 @@ index e4f14974..0129ae39 100644
 +    // Waterdog end
  }
 diff --git a/protocol/src/main/java/net/md_5/bungee/protocol/DefinedPacket.java b/protocol/src/main/java/net/md_5/bungee/protocol/DefinedPacket.java
-index 9951c1f9..dc63f0a6 100644
+index e56bfccb..141d57be 100644
 --- a/protocol/src/main/java/net/md_5/bungee/protocol/DefinedPacket.java
 +++ b/protocol/src/main/java/net/md_5/bungee/protocol/DefinedPacket.java
 @@ -10,6 +10,47 @@ import lombok.RequiredArgsConstructor;
@@ -219,7 +250,7 @@ index 9951c1f9..dc63f0a6 100644
      public static void writeString(String s, ByteBuf buf)
      {
 diff --git a/protocol/src/main/java/net/md_5/bungee/protocol/MinecraftDecoder.java b/protocol/src/main/java/net/md_5/bungee/protocol/MinecraftDecoder.java
-index 71ddf022..7daaee69 100644
+index 6c3c7ab8..b005affb 100644
 --- a/protocol/src/main/java/net/md_5/bungee/protocol/MinecraftDecoder.java
 +++ b/protocol/src/main/java/net/md_5/bungee/protocol/MinecraftDecoder.java
 @@ -28,10 +28,22 @@ public class MinecraftDecoder extends MessageToMessageDecoder<ByteBuf>
@@ -502,7 +533,7 @@ index 44dc34ff..ee937b15 100644
                      {
                          // This is a new packet, skip it till we reach the next protocol
 diff --git a/protocol/src/main/java/net/md_5/bungee/protocol/ProtocolConstants.java b/protocol/src/main/java/net/md_5/bungee/protocol/ProtocolConstants.java
-index 20bbd5db..5e898b17 100644
+index cd987c8a..86e90d1c 100644
 --- a/protocol/src/main/java/net/md_5/bungee/protocol/ProtocolConstants.java
 +++ b/protocol/src/main/java/net/md_5/bungee/protocol/ProtocolConstants.java
 @@ -6,6 +6,16 @@ import java.util.List;
@@ -522,9 +553,9 @@ index 20bbd5db..5e898b17 100644
      public static final int MINECRAFT_1_8 = 47;
      public static final int MINECRAFT_1_9 = 107;
      public static final int MINECRAFT_1_9_1 = 108;
-@@ -28,6 +38,15 @@ public class ProtocolConstants
-     public static final int MINECRAFT_1_15 = 573;
+@@ -29,6 +39,15 @@ public class ProtocolConstants
      public static final int MINECRAFT_1_15_1 = 575;
+     public static final int MINECRAFT_1_15_2 = 578;
      public static final List<String> SUPPORTED_VERSIONS = Arrays.asList(
 +            // Waterdog start
 +            "PE-1.8.x",
@@ -538,7 +569,7 @@ index 20bbd5db..5e898b17 100644
              "1.8.x",
              "1.9.x",
              "1.10.x",
-@@ -38,6 +57,15 @@ public class ProtocolConstants
+@@ -39,6 +58,15 @@ public class ProtocolConstants
              "1.15.x"
      );
      public static final List<Integer> SUPPORTED_VERSION_IDS = Arrays.asList(
@@ -554,7 +585,7 @@ index 20bbd5db..5e898b17 100644
              ProtocolConstants.MINECRAFT_1_8,
              ProtocolConstants.MINECRAFT_1_9,
              ProtocolConstants.MINECRAFT_1_9_1,
-@@ -63,14 +91,22 @@ public class ProtocolConstants
+@@ -65,14 +93,22 @@ public class ProtocolConstants
  
      public static final boolean isBeforeOrEq(int before, int other)
      {
@@ -1008,6 +1039,100 @@ index 6ef76ea2..5dee53dd 100644
      }
  
      protected void rewriteV8ChunkSection(ByteBuf in, ByteBuf out) {
+diff --git a/protocol/src/main/java/network/ycc/waterdog/pe/PERawPacketData.java b/protocol/src/main/java/network/ycc/waterdog/pe/PERawPacketData.java
+index 55ca27bd..88074783 100644
+--- a/protocol/src/main/java/network/ycc/waterdog/pe/PERawPacketData.java
++++ b/protocol/src/main/java/network/ycc/waterdog/pe/PERawPacketData.java
+@@ -9,6 +9,7 @@ import io.netty.channel.Channel;
+ import net.md_5.bungee.protocol.DefinedPacket;
+ import net.md_5.bungee.protocol.ProtocolConstants;
+
++import java.util.Map;
+ import java.util.UUID;
+
+ public class PERawPacketData {
+@@ -173,4 +174,24 @@ public class PERawPacketData {
+         channel.write(removeEntityEffect);
+     }
+
++    public static void injectSetGameRule(Channel channel, final Map<String, Object> rules){
++        final ByteBuf gameRulePacket = channel.alloc().ioBuffer();
++        DefinedPacket.writeVarInt(0x48, gameRulePacket); //GAME_RULES_CHANGED_PACKET
++        DefinedPacket.writeVarInt(rules.size(), gameRulePacket);
++        rules.forEach((String rule, Object value)->{
++            DefinedPacket.writeString(rule, gameRulePacket);
++
++            if (value instanceof Byte){
++                DefinedPacket.writeVarInt(1, gameRulePacket);
++                gameRulePacket.writeByte((byte) value);
++            }else if (value instanceof Integer){
++                DefinedPacket.writeVarInt(2, gameRulePacket);
++                DefinedPacket.writeSVarInt((int) value, gameRulePacket);
++            }else if (value instanceof Float){
++                DefinedPacket.writeVarInt(3, gameRulePacket);
++                gameRulePacket.writeFloatLE((float) value);
++            }
++        });
++        channel.write(gameRulePacket);
++    }
+ }
+diff --git a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java b/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java
+index 553713ff..92d7fedf 100644
+--- a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java
++++ b/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java
+@@ -17,6 +17,8 @@ import net.md_5.bungee.protocol.packet.Login;
+ import network.ycc.waterdog.pe.PEDataValues;
+
+ import java.io.IOException;
++import java.util.HashMap;
++import java.util.Map;
+
+ @Data
+ @NoArgsConstructor
+@@ -28,6 +30,7 @@ public class PELogin extends Login {
+     private byte[] tailPayload;
+     private int payloadPaletteOffset; //offset of tailPayload for the palette
+     private int payloadPaletteLength;
++    private Map<String, Object> rules = new HashMap<>();
+
+     public PELogin(int entityId, short gameMode, int dimension, short difficulty, short maxPlayers, String levelType, int viewDistance, boolean reducedDebugInfo, byte[] tailPayload) {
+         super(entityId, gameMode, dimension, 0, difficulty, maxPlayers, levelType, viewDistance, reducedDebugInfo, true);
+@@ -77,27 +80,30 @@ public class PELogin extends Login {
+         }
+         buf.readBoolean(); //commands enabled
+         buf.readBoolean(); //needs texture pack
+-
++
+         final int nGameRules = DefinedPacket.readVarInt(buf); //game rules
+         for (int i = 0 ; i < nGameRules ; i++) {
+-            DefinedPacket.readString(buf);
++            String rule = DefinedPacket.readString(buf);
++            Object value;
++
+             final int grType = DefinedPacket.readVarInt(buf);
+             switch (grType) {
+                 case 1: {
+-                    buf.readByte();
++                    value = buf.readByte();
+                     break;
+                 }
+                 case 2: {
+-                    DefinedPacket.readSVarInt(buf);
++                    value = DefinedPacket.readSVarInt(buf);
+                     break;
+                 }
+                 case 3: {
+-                    buf.readFloatLE();
++                    value = buf.readFloatLE();
+                     break;
+                 }
+                 default:
+                     throw new IllegalArgumentException("Unknown game rule type " + grType);
+             }
++            rules.put(rule, value);
+         }
+
+         buf.readBoolean(); //bonus chest
 diff --git a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PEStopSoundPacket.java b/protocol/src/main/java/network/ycc/waterdog/pe/packet/PEStopSoundPacket.java
 index dab227a1..12b52465 100644
 --- a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PEStopSoundPacket.java
@@ -1023,10 +1148,21 @@ index dab227a1..12b52465 100644
  
      @Override
 diff --git a/proxy/src/main/java/net/md_5/bungee/BungeeCord.java b/proxy/src/main/java/net/md_5/bungee/BungeeCord.java
-index 98b43213..588cee81 100644
+index a62f6698..aec5b02a 100644
 --- a/proxy/src/main/java/net/md_5/bungee/BungeeCord.java
 +++ b/proxy/src/main/java/net/md_5/bungee/BungeeCord.java
-@@ -239,6 +239,7 @@ public class BungeeCord extends ProxyServer
+@@ -130,6 +130,10 @@ public class BungeeCord extends ProxyServer
+     private final Map<UUID, UserConnection> connectionsByOfflineUUID = new HashMap<>();
+     private final Map<UUID, UserConnection> connectionsByUUID = new HashMap<>();
+     private final ReadWriteLock connectionLock = new ReentrantReadWriteLock();
++    /**
++     * Connection id pointing to first server id
++     */
++    private final Map<Integer, Integer> connectionsId = new HashMap<>();
+     /**
+      * Plugin manager.
+      */
+@@ -240,6 +244,7 @@ public class BungeeCord extends ProxyServer
                  logger.info( "Using standard Java compressor." );
              }
          }
@@ -1034,17 +1170,17 @@ index 98b43213..588cee81 100644
      }
  
      /**
-@@ -330,6 +331,7 @@ public class BungeeCord extends ProxyServer
+@@ -331,6 +336,7 @@ public class BungeeCord extends ProxyServer
                      }
                  }
              };
 +            if ( !info.isRakNet() ) { // Waterdog
              new ServerBootstrap()
-                     .channel( PipelineUtils.getServerChannel() )
+                     .channel( PipelineUtils.getServerChannel( info.getSocketAddress() ) )
                      .option( ChannelOption.SO_REUSEADDR, true ) // TODO: Move this elsewhere!
-@@ -338,8 +340,23 @@ public class BungeeCord extends ProxyServer
+@@ -339,8 +345,23 @@ public class BungeeCord extends ProxyServer
                      .group( bossEventLoopGroup, workerEventLoopGroup )
-                     .localAddress( info.getHost() )
+                     .localAddress( info.getSocketAddress() )
                      .bind().addListener( listener );
 +            // Waterdog start
 +            } else {
@@ -1065,9 +1201,37 @@ index 98b43213..588cee81 100644
 -            if ( info.isQueryEnabled() )
 +            if ( info.needsRealQuery() ) // Waterdog
              {
-                 ChannelFutureListener bindListener = new ChannelFutureListener()
-                 {
-@@ -635,7 +652,7 @@ public class BungeeCord extends ProxyServer
+                 Preconditions.checkArgument( info.getSocketAddress() instanceof InetSocketAddress, "Can only create query listener on UDP address" );
+ 
+@@ -595,6 +616,27 @@ public class BungeeCord extends ProxyServer
+         }
+     }
+
++    public Integer createConnectionId(Integer entityId){
++        Integer realId = ((connectionsId.size() == 0) ? 1000 : 1000 + connectionsId.size());
++        if (connectionsId.containsKey(realId)){
++            Integer lastkey = 1000;
++            for (Integer key : connectionsId.keySet()){
++                if (key - lastkey > 1){
++                    realId = key - 1;
++                }
++                lastkey = key;
++            }
++        }
++
++        connectionsId.put(realId, entityId);
++        return realId;
++    }
++
++    @Override
++    public void removeConnectionId(Integer realId) {
++        connectionsId.remove(realId);
++    }
++
+     @Override
+     public Map<String, ServerInfo> getServers()
+     {
+@@ -638,7 +680,7 @@ public class BungeeCord extends ProxyServer
  
      public PluginMessage registerChannels(int protocolVersion)
      {
@@ -1076,18 +1240,37 @@ index 98b43213..588cee81 100644
          {
              return new PluginMessage( "minecraft:register", Util.format( Iterables.transform( pluginChannels, PluginMessage.MODERNISE ), "\00" ).getBytes( Charsets.UTF_8 ), false );
          }
-@@ -656,9 +673,9 @@ public class BungeeCord extends ProxyServer
+@@ -658,16 +700,18 @@ public class BungeeCord extends ProxyServer
+         return getConfig().getGameVersion(); // Waterfall
      }
  
++    // Waterdog start
      @Override
 -    public ServerInfo constructServerInfo(String name, InetSocketAddress address, String motd, boolean restricted)
-+    public ServerInfo constructServerInfo(String name, InetSocketAddress address, String motd, boolean restricted, boolean isRakNet, String transferGroup) // Waterdog
++    public ServerInfo constructServerInfo(String name, SocketAddress address, String motd, boolean restricted)
+     {
+-        return constructServerInfo( name, (SocketAddress) address, motd, restricted );
++        return constructServerInfo( name, address, motd, restricted );
+     }
++    // Waterdog end
+ 
+     @Override
+-    public ServerInfo constructServerInfo(String name, SocketAddress address, String motd, boolean restricted)
++    public ServerInfo constructServerInfo(String name, SocketAddress address, String motd, boolean restricted, boolean isRakNet, String transferGroup) // Waterdog
      {
 -        return new BungeeServerInfo( name, address, motd, restricted );
 +        return new BungeeServerInfo( name, address, motd, restricted, isRakNet, transferGroup ); // Waterdog
      }
  
      @Override
+@@ -721,6 +765,7 @@ public class BungeeCord extends ProxyServer
+                 connections.remove( con.getName() );
+                 connectionsByUUID.remove( con.getUniqueId() );
+                 connectionsByOfflineUUID.remove( con.getPendingConnection().getOfflineId() );
++                connectionsId.remove(con.getClientEntityId());
+             }
+         } finally
+         {
 diff --git a/proxy/src/main/java/net/md_5/bungee/BungeeCordLauncher.java b/proxy/src/main/java/net/md_5/bungee/BungeeCordLauncher.java
 index d9497970..3eda0a37 100644
 --- a/proxy/src/main/java/net/md_5/bungee/BungeeCordLauncher.java
@@ -1109,25 +1292,25 @@ index d9497970..3eda0a37 100644
  
          if ( !options.has( "noconsole" ) )
 diff --git a/proxy/src/main/java/net/md_5/bungee/BungeeServerInfo.java b/proxy/src/main/java/net/md_5/bungee/BungeeServerInfo.java
-index 4c0637b9..f2898669 100644
+index fa4fff0e..f18f2202 100644
 --- a/proxy/src/main/java/net/md_5/bungee/BungeeServerInfo.java
 +++ b/proxy/src/main/java/net/md_5/bungee/BungeeServerInfo.java
-@@ -34,6 +34,7 @@ import net.md_5.bungee.protocol.packet.PluginMessage;
+@@ -36,6 +36,7 @@ import net.md_5.bungee.protocol.packet.PluginMessage;
  @ToString(of =
  {
-     "name", "address", "restricted"
-+    , "raknet" // Waterdog
+     "name", "socketAddress", "restricted"
++    , "raknet", "transferGroup" // Waterdog
  })
+ // CHECKSTYLE:ON
  public class BungeeServerInfo implements ServerInfo
- {
-@@ -50,6 +51,22 @@ public class BungeeServerInfo implements ServerInfo
+@@ -53,6 +54,22 @@ public class BungeeServerInfo implements ServerInfo
      @Getter
      private final Queue<DefinedPacket> packetQueue = new LinkedList<>();
  
 +    // Waterdog start
-+    public BungeeServerInfo(String name, InetSocketAddress address, String motd, boolean restricted) {
++    public BungeeServerInfo(String name, SocketAddress socketAddress, String motd, boolean restricted) {
 +        this.name = name;
-+        this.address = address;
++        this.socketAddress = socketAddress;
 +        this.motd = motd;
 +        this.restricted = restricted;
 +        this.rakNet = true;
@@ -1144,22 +1327,23 @@ index 4c0637b9..f2898669 100644
      public void addPlayer(ProxiedPlayer player)
      {
 diff --git a/proxy/src/main/java/net/md_5/bungee/ServerConnector.java b/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
-index 00cd477f..20ac3e9f 100644
+index 139c4f09..74613589 100644
 --- a/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
 +++ b/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
-@@ -52,6 +52,7 @@ import net.md_5.bungee.protocol.packet.SetCompression;
+@@ -53,6 +53,8 @@ import net.md_5.bungee.protocol.packet.SetCompression;
  import net.md_5.bungee.protocol.packet.ViewDistance;
  import net.md_5.bungee.util.BufUtil;
  import net.md_5.bungee.util.QuietException;
 +import network.ycc.waterdog.pe.packet.PEHandshake;
- 
++import network.ycc.waterdog.pe.packet.PELogin;
+
  @RequiredArgsConstructor
  public class ServerConnector extends PacketHandler
-@@ -99,7 +100,15 @@ public class ServerConnector extends PacketHandler
+@@ -100,7 +102,15 @@ public class ServerConnector extends PacketHandler
          Handshake originalHandshake = user.getPendingConnection().getHandshake();
          Handshake copiedHandshake = new Handshake( originalHandshake.getProtocolVersion(), originalHandshake.getHost(), originalHandshake.getPort(), 2 );
  
--        if ( BungeeCord.getInstance().config.isIpForward() )
+-        if ( BungeeCord.getInstance().config.isIpForward() && user.getSocketAddress() instanceof InetSocketAddress )
 +        // Waterdog start - PE handshake
 +        if (originalHandshake instanceof network.ycc.waterdog.pe.packet.PEHandshake) {
 +            network.ycc.waterdog.pe.packet.PEHandshake oPEHandshake = (network.ycc.waterdog.pe.packet.PEHandshake) originalHandshake;
@@ -1168,11 +1352,11 @@ index 00cd477f..20ac3e9f 100644
 +                    oPEHandshake.isAuthorized(), oPEHandshake.getClientInfo(), oPEHandshake.getXuid() );
 +        }
 +        // Waterdog end
-+        if ( BungeeCord.getInstance().config.isIpForward() && !target.isRakNet()) // Waterdog
++        if ( BungeeCord.getInstance().config.isIpForward() && user.getSocketAddress() instanceof InetSocketAddress && !target.isRakNet()) // Waterdog
          {
              String newHost = copiedHandshake.getHost() + "\00" + user.getAddress().getHostString() + "\00" + user.getUUID();
  
-@@ -140,9 +149,16 @@ public class ServerConnector extends PacketHandler
+@@ -141,9 +151,16 @@ public class ServerConnector extends PacketHandler
              copiedHandshake.setHost( copiedHandshake.getHost() + user.getExtraDataInHandshake() );
          }
  
@@ -1189,7 +1373,7 @@ index 00cd477f..20ac3e9f 100644
          channel.write( new LoginRequest( user.getName() ) );
      }
  
-@@ -157,6 +173,12 @@ public class ServerConnector extends PacketHandler
+@@ -158,6 +175,12 @@ public class ServerConnector extends PacketHandler
      {
          if ( packet.packet == null )
          {
@@ -1202,7 +1386,7 @@ index 00cd477f..20ac3e9f 100644
              throw new QuietException( "Unexpected packet received during server login process!\n" + BufUtil.dump( packet.buf, 16 ) );
          }
      }
-@@ -164,6 +186,15 @@ public class ServerConnector extends PacketHandler
+@@ -165,6 +188,15 @@ public class ServerConnector extends PacketHandler
      @Override
      public void handle(LoginSuccess loginSuccess) throws Exception
      {
@@ -1218,7 +1402,7 @@ index 00cd477f..20ac3e9f 100644
          Preconditions.checkState( thisState == State.LOGIN_SUCCESS, "Not expecting LOGIN_SUCCESS" );
          ch.setProtocol( Protocol.GAME );
          thisState = State.LOGIN;
-@@ -196,6 +227,30 @@ public class ServerConnector extends PacketHandler
+@@ -197,6 +229,30 @@ public class ServerConnector extends PacketHandler
          ch.setCompressionThreshold( setCompression.getThreshold() );
      }
  
@@ -1249,7 +1433,17 @@ index 00cd477f..20ac3e9f 100644
      @Override
      public void handle(Login login) throws Exception
      {
-@@ -246,6 +301,31 @@ public class ServerConnector extends PacketHandler
+@@ -242,11 +297,41 @@ public class ServerConnector extends PacketHandler
+             // Once again, first connection
+             user.setClientEntityId( login.getEntityId() );
+             user.setServerEntityId( login.getEntityId() );
++            if (login instanceof network.ycc.waterdog.pe.packet.PELogin){
++                final network.ycc.waterdog.pe.packet.PELogin peLogin = (network.ycc.waterdog.pe.packet.PELogin) login;
++                Integer realId = ProxyServer.getInstance().createConnectionId(peLogin.getEntityId());
++                if (realId != null) user.setClientEntityId( realId );
++            }
+
+             // Set tab list size, TODO: what shall we do about packet mutability
              Login modLogin = new Login( login.getEntityId(), login.getGameMode(), (byte) login.getDimension(), login.getSeed(), login.getDifficulty(),
                      (byte) user.getPendingConnection().getListener().getTabListSize(), login.getLevelType(), login.getViewDistance(), login.isReducedDebugInfo(), login.isNormalRespawn() );
  
@@ -1259,7 +1453,7 @@ index 00cd477f..20ac3e9f 100644
 +
 +                // TODO: version support check
 +
-+                modLogin = new network.ycc.waterdog.pe.packet.PELogin( login.getEntityId(),
++                modLogin = new network.ycc.waterdog.pe.packet.PELogin( user.getClientEntityId(),
 +                        login.getGameMode(), (byte) login.getDimension(), login.getDifficulty(),
 +                        (byte) user.getPendingConnection().getListener().getTabListSize(), login.getLevelType(),
 +                        login.getViewDistance(), login.isReducedDebugInfo(), peLogin.getTailPayload() );
@@ -1281,7 +1475,7 @@ index 00cd477f..20ac3e9f 100644
              user.unsafe().sendPacket( modLogin );
  
              ByteBuf brand = ByteBufAllocator.DEFAULT.heapBuffer();
-@@ -260,6 +340,13 @@ public class ServerConnector extends PacketHandler
+@@ -261,6 +346,13 @@ public class ServerConnector extends PacketHandler
              user.getTabListHandler().onServerChange();
  
              Scoreboard serverScoreboard = user.getServerSentScoreboard();
@@ -1295,7 +1489,7 @@ index 00cd477f..20ac3e9f 100644
              if ( !user.isDisableEntityMetadataRewrite() ) { // Waterfall
              for ( Objective objective : serverScoreboard.getObjectives() )
              {
-@@ -321,6 +408,39 @@ public class ServerConnector extends PacketHandler
+@@ -322,6 +414,39 @@ public class ServerConnector extends PacketHandler
              }
              user.setDimension( login.getDimension() );
  
@@ -1307,7 +1501,7 @@ index 00cd477f..20ac3e9f 100644
 +                        (int) peLogin.getSpawnX(), (int) peLogin.getSpawnY(), (int) peLogin.getSpawnZ());
 +                network.ycc.waterdog.pe.PERawPacketData.injectGameMode(user.getCh().getHandle(), login.getGameMode());
 +
-+                server.unsafe().sendPacket(new network.ycc.waterdog.pe.packet.PELocalPlayerInitialized(login.getEntityId()));
++                server.unsafe().sendPacket(new network.ycc.waterdog.pe.packet.PELocalPlayerInitialized(user.getClientEntityId()));
 +
 +                ByteBuf paletteData = io.netty.buffer.Unpooled.wrappedBuffer(peLogin.getTailPayload())
 +                        .skipBytes(peLogin.getPayloadPaletteOffset())
@@ -1329,6 +1523,7 @@ index 00cd477f..20ac3e9f 100644
 +                user.unsafe().sendPacket( new network.ycc.waterdog.pe.packet.PEStopSoundPacket( "portal.travel", true ) );
 +
 +                network.ycc.waterdog.pe.PERawPacketData.injectRemoveAllEffects(user.getCh().getHandle(), user.getClientEntityId());
++                network.ycc.waterdog.pe.PERawPacketData.injectSetGameRule(user.getCh().getHandle(), ((PELogin) login).getRules());
 +            }
 +            // Waterdog end
 +
@@ -1336,10 +1531,10 @@ index 00cd477f..20ac3e9f 100644
              user.getServer().disconnect( "Quitting" );
          }
 diff --git a/proxy/src/main/java/net/md_5/bungee/UserConnection.java b/proxy/src/main/java/net/md_5/bungee/UserConnection.java
-index eeb7a51e..08dd340a 100644
+index 95dbaefd..7e4cdf38 100644
 --- a/proxy/src/main/java/net/md_5/bungee/UserConnection.java
 +++ b/proxy/src/main/java/net/md_5/bungee/UserConnection.java
-@@ -131,6 +131,18 @@ public final class UserConnection implements ProxiedPlayer
+@@ -130,6 +130,18 @@ public final class UserConnection implements ProxiedPlayer
      @Getter
      private final Multimap<Integer, Integer> potions = HashMultimap.create();
      // Waterfall end
@@ -1358,7 +1553,7 @@ index eeb7a51e..08dd340a 100644
      /*========================================================================*/
      @Getter
      private String displayName;
-@@ -151,6 +163,13 @@ public final class UserConnection implements ProxiedPlayer
+@@ -150,6 +162,13 @@ public final class UserConnection implements ProxiedPlayer
          public void sendPacket(DefinedPacket packet)
          {
              ch.write( packet );
@@ -1372,7 +1567,7 @@ index eeb7a51e..08dd340a 100644
          }
      };
  
-@@ -335,6 +354,17 @@ public final class UserConnection implements ProxiedPlayer
+@@ -334,6 +353,17 @@ public final class UserConnection implements ProxiedPlayer
              return;
          }
  
@@ -1390,7 +1585,7 @@ index eeb7a51e..08dd340a 100644
          pendingConnects.add( target );
  
          ChannelInitializer initializer = new ChannelInitializer()
-@@ -342,10 +372,29 @@ public final class UserConnection implements ProxiedPlayer
+@@ -341,10 +371,29 @@ public final class UserConnection implements ProxiedPlayer
              @Override
              protected void initChannel(Channel ch) throws Exception
              {
@@ -1420,14 +1615,14 @@ index eeb7a51e..08dd340a 100644
              }
          };
          ChannelFutureListener listener = new ChannelFutureListener()
-@@ -379,12 +428,25 @@ public final class UserConnection implements ProxiedPlayer
+@@ -378,12 +427,25 @@ public final class UserConnection implements ProxiedPlayer
                  }
              }
          };
 -        Bootstrap b = new Bootstrap()
 +        Bootstrap b; if (!target.isRakNet()) { // Waterdog
 +        b = new Bootstrap()
-                 .channel( PipelineUtils.getChannel() )
+                 .channel( PipelineUtils.getChannel( target.getAddress() ) )
                  .group( ch.getHandle().eventLoop() )
                  .handler( initializer )
                  .option( ChannelOption.CONNECT_TIMEOUT_MILLIS, request.getConnectTimeout() )
@@ -1445,9 +1640,9 @@ index eeb7a51e..08dd340a 100644
 +        }
 +        // Waterdog end
          // Windows is bugged, multi homed users will just have to live with random connecting IPs
-         if ( getPendingConnection().getListener().isSetLocalAddress() && !PlatformDependent.isWindows() )
+         if ( getPendingConnection().getListener().isSetLocalAddress() && !PlatformDependent.isWindows() && getPendingConnection().getListener().getSocketAddress() instanceof InetSocketAddress )
          {
-@@ -596,7 +658,22 @@ public final class UserConnection implements ProxiedPlayer
+@@ -611,7 +673,22 @@ public final class UserConnection implements ProxiedPlayer
      {
          this.settings = settings;
          this.locale = null;
@@ -1470,7 +1665,7 @@ index eeb7a51e..08dd340a 100644
  
      @Override
      public Locale getLocale()
-@@ -711,6 +788,7 @@ public final class UserConnection implements ProxiedPlayer
+@@ -726,6 +803,7 @@ public final class UserConnection implements ProxiedPlayer
  
      public void setCompressionThreshold(int compressionThreshold)
      {
@@ -1491,10 +1686,10 @@ index 37fe6ac7..fdb26501 100644
  
      @Override
 diff --git a/proxy/src/main/java/net/md_5/bungee/conf/Configuration.java b/proxy/src/main/java/net/md_5/bungee/conf/Configuration.java
-index 5841cf63..20e224f0 100644
+index 35eb2503..c1a1769d 100644
 --- a/proxy/src/main/java/net/md_5/bungee/conf/Configuration.java
 +++ b/proxy/src/main/java/net/md_5/bungee/conf/Configuration.java
-@@ -68,6 +68,13 @@ public abstract class Configuration implements ProxyConfig
+@@ -69,6 +69,13 @@ public abstract class Configuration implements ProxyConfig
      private boolean preventProxyConnections;
      private boolean forgeSupport = true; // Waterfall: default to enabled
  
@@ -1508,7 +1703,7 @@ index 5841cf63..20e224f0 100644
      @Synchronized("serversLock") // Waterfall
      public void load()
      {
-@@ -99,6 +106,12 @@ public abstract class Configuration implements ProxyConfig
+@@ -101,6 +108,12 @@ public abstract class Configuration implements ProxyConfig
          compressionThreshold = adapter.getInt( "network_compression_threshold", compressionThreshold );
          preventProxyConnections = adapter.getBoolean( "prevent_proxy_connections", preventProxyConnections );
          forgeSupport = adapter.getBoolean( "forge_support", forgeSupport );
@@ -1522,7 +1717,7 @@ index 5841cf63..20e224f0 100644
          disabledCommands = new CaseInsensitiveSet( (Collection<String>) adapter.getList( "disabled_commands", Arrays.asList( "disabledcommandhere" ) ) );
  
 diff --git a/proxy/src/main/java/net/md_5/bungee/conf/YamlConfig.java b/proxy/src/main/java/net/md_5/bungee/conf/YamlConfig.java
-index 44011a96..7f2f171b 100644
+index 85c2a0b5..b3b22148 100644
 --- a/proxy/src/main/java/net/md_5/bungee/conf/YamlConfig.java
 +++ b/proxy/src/main/java/net/md_5/bungee/conf/YamlConfig.java
 @@ -226,8 +226,12 @@ public class YamlConfig implements ConfigurationAdapter
@@ -1533,7 +1728,7 @@ index 44011a96..7f2f171b 100644
 +            boolean isRakNet = get( "raknet", false, val );
 +            String transferGroup = get( "transfer_group", "default", val );
 +            // Waterdog end
-             InetSocketAddress address = Util.getAddr( addr );
+             SocketAddress address = Util.getAddr( addr );
 -            ServerInfo info = ProxyServer.getInstance().constructServerInfo( name, address, motd, restricted );
 +            ServerInfo info = ProxyServer.getInstance().constructServerInfo( name, address, motd, restricted, isRakNet, transferGroup ); // Waterdog
              ret.put( name, info );
@@ -1561,7 +1756,7 @@ index 44011a96..7f2f171b 100644
 -            String host = get( "host", "0.0.0.0:25577", val );
 +            String host = get( "host", isFirst ? "0.0.0.0:25577" : "0.0.0.0:19132", val ); // Waterdog
              int tabListSize = get( "tab_size", 60, val );
-             InetSocketAddress address = Util.getAddr( host );
+             SocketAddress address = Util.getAddr( host );
              Map<String, String> forced = new CaseInsensitiveMap<>( get( "forced_hosts", forcedDef, val ) );
 @@ -268,10 +274,11 @@ public class YamlConfig implements ConfigurationAdapter
              boolean setLocalAddress = get( "bind_local_address", true, val );
@@ -1589,10 +1784,10 @@ index 44011a96..7f2f171b 100644
  
          return ret;
 diff --git a/proxy/src/main/java/net/md_5/bungee/connection/DownstreamBridge.java b/proxy/src/main/java/net/md_5/bungee/connection/DownstreamBridge.java
-index 1f8a2439..b61bb405 100644
+index 9fbb5e92..0ca82da8 100644
 --- a/proxy/src/main/java/net/md_5/bungee/connection/DownstreamBridge.java
 +++ b/proxy/src/main/java/net/md_5/bungee/connection/DownstreamBridge.java
-@@ -137,6 +137,21 @@ public class DownstreamBridge extends PacketHandler
+@@ -140,6 +140,21 @@ public class DownstreamBridge extends PacketHandler
      public void handle(PacketWrapper packet) throws Exception
      {
          con.getEntityRewrite().rewriteClientbound( packet.buf, con.getServerEntityId(), con.getClientEntityId(), con.getPendingConnection().getVersion() );
@@ -1614,7 +1809,7 @@ index 1f8a2439..b61bb405 100644
          con.sendPacket( packet );
      }
  
-@@ -154,6 +169,21 @@ public class DownstreamBridge extends PacketHandler
+@@ -159,6 +174,21 @@ public class DownstreamBridge extends PacketHandler
          throw CancelSendSignal.INSTANCE; // Always throw because of profile rewriting
      }
  
@@ -1636,7 +1831,7 @@ index 1f8a2439..b61bb405 100644
      @Override
      public void handle(ScoreboardObjective objective) throws Exception
      {
-@@ -463,6 +493,19 @@ public class DownstreamBridge extends PacketHandler
+@@ -475,6 +505,19 @@ public class DownstreamBridge extends PacketHandler
                      out.writeUTF( player.getUUID() );
                  }
              }
@@ -1657,10 +1852,10 @@ index 1f8a2439..b61bb405 100644
              {
                  ServerInfo info = bungee.getServerInfo( in.readUTF() );
 diff --git a/proxy/src/main/java/net/md_5/bungee/connection/InitialHandler.java b/proxy/src/main/java/net/md_5/bungee/connection/InitialHandler.java
-index 34f7f997..f06d28f3 100644
+index 8e1b9a19..b5695f84 100644
 --- a/proxy/src/main/java/net/md_5/bungee/connection/InitialHandler.java
 +++ b/proxy/src/main/java/net/md_5/bungee/connection/InitialHandler.java
-@@ -98,6 +98,10 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+@@ -99,6 +99,10 @@ public class InitialHandler extends PacketHandler implements PendingConnection
      private UUID uniqueId;
      @Getter
      private UUID offlineId;
@@ -1671,7 +1866,7 @@ index 34f7f997..f06d28f3 100644
      @Getter
      private LoginResult loginProfile;
      @Getter
-@@ -134,6 +138,7 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+@@ -135,6 +139,7 @@ public class InitialHandler extends PacketHandler implements PendingConnection
      {
          if ( packet.packet == null )
          {
@@ -1679,7 +1874,7 @@ index 34f7f997..f06d28f3 100644
              throw new QuietException( "Unexpected packet received during login process! " + BufUtil.dump( packet.buf, 16 ) );
          }
      }
-@@ -277,6 +282,11 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+@@ -278,6 +283,11 @@ public class InitialHandler extends PacketHandler implements PendingConnection
      public void handle(Handshake handshake) throws Exception
      {
          Preconditions.checkState( thisState == State.HANDSHAKE, "Not expecting HANDSHAKE" );
@@ -1691,7 +1886,7 @@ index 34f7f997..f06d28f3 100644
          this.handshake = handshake;
          ch.setVersion( handshake.getProtocolVersion() );
  
-@@ -332,6 +342,27 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+@@ -334,6 +344,27 @@ public class InitialHandler extends PacketHandler implements PendingConnection
                      }
                      return;
                  }
@@ -1719,7 +1914,7 @@ index 34f7f997..f06d28f3 100644
                  break;
              default:
                  throw new IllegalArgumentException( "Cannot request protocol " + handshake.getRequestedProtocol() );
-@@ -371,6 +402,13 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+@@ -373,6 +404,13 @@ public class InitialHandler extends PacketHandler implements PendingConnection
              return;
          }
  
@@ -1733,7 +1928,7 @@ index 34f7f997..f06d28f3 100644
          Callback<PreLoginEvent> callback = new Callback<PreLoginEvent>()
          {
  
-@@ -386,6 +424,30 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+@@ -388,6 +426,30 @@ public class InitialHandler extends PacketHandler implements PendingConnection
                  {
                      return;
                  }
@@ -1764,7 +1959,7 @@ index 34f7f997..f06d28f3 100644
                  if ( onlineMode )
                  {
                      unsafe().sendPacket( request = EncryptionUtil.encryptRequest() );
-@@ -519,6 +581,11 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+@@ -521,6 +583,11 @@ public class InitialHandler extends PacketHandler implements PendingConnection
                              userCon.setCompressionThreshold( BungeeCord.getInstance().config.getCompressionThreshold() );
                              userCon.init();
  
@@ -1776,7 +1971,7 @@ index 34f7f997..f06d28f3 100644
                              unsafe.sendPacket( new LoginSuccess( getUniqueId().toString(), getName() ) ); // With dashes in between
                              ch.setProtocol( Protocol.GAME );
  
-@@ -589,10 +656,66 @@ public class InitialHandler extends PacketHandler implements PendingConnection
+@@ -591,10 +658,66 @@ public class InitialHandler extends PacketHandler implements PendingConnection
          return ( name != null ) ? name : ( loginRequest == null ) ? null : loginRequest.getData();
      }
  
@@ -1845,10 +2040,10 @@ index 34f7f997..f06d28f3 100644
  
      @Override
 diff --git a/proxy/src/main/java/net/md_5/bungee/connection/UpstreamBridge.java b/proxy/src/main/java/net/md_5/bungee/connection/UpstreamBridge.java
-index 51d0c6cf..8c6ce6e1 100644
+index 4d8bac5d..e0a7e785 100644
 --- a/proxy/src/main/java/net/md_5/bungee/connection/UpstreamBridge.java
 +++ b/proxy/src/main/java/net/md_5/bungee/connection/UpstreamBridge.java
-@@ -95,6 +95,11 @@ public class UpstreamBridge extends PacketHandler
+@@ -96,6 +96,11 @@ public class UpstreamBridge extends PacketHandler
          if ( con.getServer() != null )
          {
              Channel server = con.getServer().getCh().getHandle();
@@ -1860,7 +2055,7 @@ index 51d0c6cf..8c6ce6e1 100644
              if ( channel.getHandle().isWritable() )
              {
                  server.config().setAutoRead( true );
-@@ -117,6 +122,18 @@ public class UpstreamBridge extends PacketHandler
+@@ -118,6 +123,18 @@ public class UpstreamBridge extends PacketHandler
          if ( con.getServer() != null )
          {
              con.getEntityRewrite().rewriteServerbound( packet.buf, con.getClientEntityId(), con.getServerEntityId(), con.getPendingConnection().getVersion() );
@@ -1879,10 +2074,10 @@ index 51d0c6cf..8c6ce6e1 100644
              con.getServer().getCh().write( packet );
          }
      }
-@@ -124,6 +141,17 @@ public class UpstreamBridge extends PacketHandler
-     @Override
-     public void handle(KeepAlive alive) throws Exception
+@@ -127,6 +144,17 @@ public class UpstreamBridge extends PacketHandler
      {
+         KeepAliveData keepAliveData = con.getServer().getKeepAlives().poll();
+ 
 +        // Waterdog start
 +        if (ProtocolConstants.isPE(con.getPendingConnection().getVersion())) {
 +            int newPing = (int) (alive.getRandomId() / 1000000);
@@ -1894,10 +2089,10 @@ index 51d0c6cf..8c6ce6e1 100644
 +            return;
 +        }
 +        // Waterdog end
-         if ( alive.getRandomId() == con.getServer().getSentPingId() )
+         if ( keepAliveData != null && alive.getRandomId() == keepAliveData.getId() )
          {
-             int newPing = (int) ( System.currentTimeMillis() - con.getSentPingTime() );
-@@ -135,11 +163,42 @@ public class UpstreamBridge extends PacketHandler
+             int newPing = (int) ( System.currentTimeMillis() - keepAliveData.getTime() );
+@@ -138,11 +166,42 @@ public class UpstreamBridge extends PacketHandler
          }
      }
  
@@ -1941,10 +2136,10 @@ index 51d0c6cf..8c6ce6e1 100644
  
          ChatEvent chatEvent = new ChatEvent( con, con.getServer(), chat.getMessage() );
 diff --git a/proxy/src/main/java/net/md_5/bungee/entitymap/EntityMap.java b/proxy/src/main/java/net/md_5/bungee/entitymap/EntityMap.java
-index 066135ad..f7e9bdd5 100644
+index e6afb98d..882ad3a0 100644
 --- a/proxy/src/main/java/net/md_5/bungee/entitymap/EntityMap.java
 +++ b/proxy/src/main/java/net/md_5/bungee/entitymap/EntityMap.java
-@@ -28,6 +28,11 @@ public abstract class EntityMap
+@@ -27,6 +27,11 @@ public abstract class EntityMap
      // Returns the correct entity map for the protocol version
      public static EntityMap getEntityMap(int version)
      {
@@ -1957,7 +2152,7 @@ index 066135ad..f7e9bdd5 100644
          if (net.md_5.bungee.api.ProxyServer.getInstance().getConfig().isDisableEntityMetadataRewrite()) {
              return EntityMap_Dummy.INSTANCE;
 diff --git a/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java b/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java
-index 4882b8ed..3cf45753 100644
+index 6dc5633f..05be59b0 100644
 --- a/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java
 +++ b/proxy/src/main/java/net/md_5/bungee/netty/ChannelWrapper.java
 @@ -54,6 +54,11 @@ public class ChannelWrapper

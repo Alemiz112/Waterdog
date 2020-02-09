@@ -13,8 +13,9 @@
                      sh 'git config --global user.email "alemiz@mizerak.eu" \
                          && git config --global user.name "Alemiz112"'
                      sh "chmod +x ./scripts/jenkinsBuild.sh && ./scripts/jenkinsBuild.sh ${BUILD_ID}"
-
-                     sh 'mvn clean -B clean -DSNYK_API_ENDPOINT="https://snyk.io/" -Dbuild.number=${BUILD_NUMBER} install'
+                      
+                     sh "mvn -s /root/.m2/settings.xml -version"
+                     sh 'mvn clean -Pupstream -B clean -DSNYK_API_ENDPOINT="https://snyk.io/" -Dbuild.number=${BUILD_NUMBER} install'
                  }
                  post {
                      success {
