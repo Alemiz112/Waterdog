@@ -1,4 +1,4 @@
-From 0007abff5b1e9a825404a066e675e4a121a07f27 Mon Sep 17 00:00:00 2001
+From 27c11d9d53c3837236b21bc15f233662578209df Mon Sep 17 00:00:00 2001
 From: Colin Godsey <crgodsey@gmail.com>
 Date: Tue, 16 Apr 2019 07:50:25 -0600
 Subject: [PATCH] Waterdog PE (modifications)
@@ -37,7 +37,7 @@ index a4011335..9ad3672a 100644
 @@ -327,4 +321,19 @@ public abstract class ProxyServer
       */
      public abstract Title createTitle();
-
+ 
 +    /**
 +     * Creates new realId for client
 +     *
@@ -1046,15 +1046,15 @@ index 55ca27bd..88074783 100644
 @@ -9,6 +9,7 @@ import io.netty.channel.Channel;
  import net.md_5.bungee.protocol.DefinedPacket;
  import net.md_5.bungee.protocol.ProtocolConstants;
-
+ 
 +import java.util.Map;
  import java.util.UUID;
-
+ 
  public class PERawPacketData {
 @@ -173,4 +174,24 @@ public class PERawPacketData {
          channel.write(removeEntityEffect);
      }
-
+ 
 +    public static void injectSetGameRule(Channel channel, final Map<String, Object> rules){
 +        final ByteBuf gameRulePacket = channel.alloc().ioBuffer();
 +        DefinedPacket.writeVarInt(0x48, gameRulePacket); //GAME_RULES_CHANGED_PACKET
@@ -1077,16 +1077,16 @@ index 55ca27bd..88074783 100644
 +    }
  }
 diff --git a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java b/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java
-index 553713ff..92d7fedf 100644
+index 553713ff..3bb20222 100644
 --- a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java
 +++ b/protocol/src/main/java/network/ycc/waterdog/pe/packet/PELogin.java
 @@ -17,6 +17,8 @@ import net.md_5.bungee.protocol.packet.Login;
  import network.ycc.waterdog.pe.PEDataValues;
-
+ 
  import java.io.IOException;
 +import java.util.HashMap;
 +import java.util.Map;
-
+ 
  @Data
  @NoArgsConstructor
 @@ -28,6 +30,7 @@ public class PELogin extends Login {
@@ -1094,14 +1094,14 @@ index 553713ff..92d7fedf 100644
      private int payloadPaletteOffset; //offset of tailPayload for the palette
      private int payloadPaletteLength;
 +    private Map<String, Object> rules = new HashMap<>();
-
+ 
      public PELogin(int entityId, short gameMode, int dimension, short difficulty, short maxPlayers, String levelType, int viewDistance, boolean reducedDebugInfo, byte[] tailPayload) {
          super(entityId, gameMode, dimension, 0, difficulty, maxPlayers, levelType, viewDistance, reducedDebugInfo, true);
 @@ -77,27 +80,30 @@ public class PELogin extends Login {
          }
          buf.readBoolean(); //commands enabled
          buf.readBoolean(); //needs texture pack
--
+-        
 +
          final int nGameRules = DefinedPacket.readVarInt(buf); //game rules
          for (int i = 0 ; i < nGameRules ; i++) {
@@ -1131,8 +1131,16 @@ index 553713ff..92d7fedf 100644
              }
 +            rules.put(rule, value);
          }
-
+ 
          buf.readBoolean(); //bonus chest
+@@ -168,6 +174,7 @@ public class PELogin extends Login {
+ 
+     @Override
+     public void write(ByteBuf buf, ProtocolConstants.Direction direction, int protocolVersion) {
++        System.out.println("Login Write EID: "+getEntityId());
+         writeSVarLong(getEntityId(), buf);
+         writeVarLong(getEntityId(), buf);
+         writeSVarInt(getGameMode(), buf);
 diff --git a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PEStopSoundPacket.java b/protocol/src/main/java/network/ycc/waterdog/pe/packet/PEStopSoundPacket.java
 index dab227a1..12b52465 100644
 --- a/protocol/src/main/java/network/ycc/waterdog/pe/packet/PEStopSoundPacket.java
@@ -1206,7 +1214,7 @@ index a62f6698..aec5b02a 100644
 @@ -595,6 +616,27 @@ public class BungeeCord extends ProxyServer
          }
      }
-
+ 
 +    public Integer createConnectionId(Integer entityId){
 +        Integer realId = ((connectionsId.size() == 0) ? 1000 : 1000 + connectionsId.size());
 +        if (connectionsId.containsKey(realId)){
@@ -1327,7 +1335,7 @@ index fa4fff0e..f18f2202 100644
      public void addPlayer(ProxiedPlayer player)
      {
 diff --git a/proxy/src/main/java/net/md_5/bungee/ServerConnector.java b/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
-index 139c4f09..74613589 100644
+index 139c4f09..c36c9df0 100644
 --- a/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
 +++ b/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
 @@ -53,6 +53,8 @@ import net.md_5.bungee.protocol.packet.SetCompression;
@@ -1336,7 +1344,7 @@ index 139c4f09..74613589 100644
  import net.md_5.bungee.util.QuietException;
 +import network.ycc.waterdog.pe.packet.PEHandshake;
 +import network.ycc.waterdog.pe.packet.PELogin;
-
+ 
  @RequiredArgsConstructor
  public class ServerConnector extends PacketHandler
 @@ -100,7 +102,15 @@ public class ServerConnector extends PacketHandler
@@ -1433,7 +1441,7 @@ index 139c4f09..74613589 100644
      @Override
      public void handle(Login login) throws Exception
      {
-@@ -242,11 +297,41 @@ public class ServerConnector extends PacketHandler
+@@ -242,11 +298,41 @@ public class ServerConnector extends PacketHandler
              // Once again, first connection
              user.setClientEntityId( login.getEntityId() );
              user.setServerEntityId( login.getEntityId() );
@@ -1442,7 +1450,7 @@ index 139c4f09..74613589 100644
 +                Integer realId = ProxyServer.getInstance().createConnectionId(peLogin.getEntityId());
 +                if (realId != null) user.setClientEntityId( realId );
 +            }
-
+ 
              // Set tab list size, TODO: what shall we do about packet mutability
              Login modLogin = new Login( login.getEntityId(), login.getGameMode(), (byte) login.getDimension(), login.getSeed(), login.getDifficulty(),
                      (byte) user.getPendingConnection().getListener().getTabListSize(), login.getLevelType(), login.getViewDistance(), login.isReducedDebugInfo(), login.isNormalRespawn() );
@@ -1475,7 +1483,7 @@ index 139c4f09..74613589 100644
              user.unsafe().sendPacket( modLogin );
  
              ByteBuf brand = ByteBufAllocator.DEFAULT.heapBuffer();
-@@ -261,6 +346,13 @@ public class ServerConnector extends PacketHandler
+@@ -261,6 +347,13 @@ public class ServerConnector extends PacketHandler
              user.getTabListHandler().onServerChange();
  
              Scoreboard serverScoreboard = user.getServerSentScoreboard();
@@ -1489,7 +1497,7 @@ index 139c4f09..74613589 100644
              if ( !user.isDisableEntityMetadataRewrite() ) { // Waterfall
              for ( Objective objective : serverScoreboard.getObjectives() )
              {
-@@ -322,6 +414,39 @@ public class ServerConnector extends PacketHandler
+@@ -322,6 +415,40 @@ public class ServerConnector extends PacketHandler
              }
              user.setDimension( login.getDimension() );
  
