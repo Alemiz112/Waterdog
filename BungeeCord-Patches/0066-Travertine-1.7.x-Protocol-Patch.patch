@@ -1,4 +1,4 @@
-From 0b8553b5572ed1b58f019f3583037d45a38e071d Mon Sep 17 00:00:00 2001
+From 4194d9e811f95d4c7e49771f8b254884c15ebd10 Mon Sep 17 00:00:00 2001
 From: Troy Frew <fuzzy_bot@arenaga.me>
 Date: Tue, 15 Nov 2016 10:31:04 -0500
 Subject: [PATCH] Travertine 1.7.x Protocol Patch
@@ -1355,7 +1355,7 @@ index 491cf1a1..299a216c 100644
      }
  }
 diff --git a/proxy/src/main/java/net/md_5/bungee/ServerConnector.java b/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
-index cfd73f91..00d84e31 100644
+index c36c9df0..49fff987 100644
 --- a/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
 +++ b/proxy/src/main/java/net/md_5/bungee/ServerConnector.java
 @@ -6,6 +6,7 @@ import io.netty.buffer.ByteBufAllocator;
@@ -1366,7 +1366,7 @@ index cfd73f91..00d84e31 100644
  import java.util.Queue;
  import java.util.Set;
  import java.util.UUID;
-@@ -334,10 +335,20 @@ public class ServerConnector extends PacketHandler
+@@ -335,10 +336,20 @@ public class ServerConnector extends PacketHandler
  
              user.unsafe().sendPacket( modLogin );
  
@@ -1391,7 +1391,7 @@ index cfd73f91..00d84e31 100644
  
              user.setDimension( login.getDimension() );
          } else
-@@ -356,7 +367,7 @@ public class ServerConnector extends PacketHandler
+@@ -357,7 +368,7 @@ public class ServerConnector extends PacketHandler
              if ( !user.isDisableEntityMetadataRewrite() ) { // Waterfall
              for ( Objective objective : serverScoreboard.getObjectives() )
              {
@@ -1400,7 +1400,7 @@ index cfd73f91..00d84e31 100644
              }
              for ( Score score : serverScoreboard.getScores() )
              {
-@@ -551,6 +562,14 @@ public class ServerConnector extends PacketHandler
+@@ -553,6 +564,14 @@ public class ServerConnector extends PacketHandler
              {
                  this.handshakeHandler.handle( pluginMessage );
  
